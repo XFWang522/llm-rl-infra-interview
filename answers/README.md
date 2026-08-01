@@ -7,7 +7,7 @@
 - [第 3 章：Tensor / Pipeline / Context Parallel](03-model-parallel.md)（题 25～36，已完成）
 - [第 4 章：MoE 训练 Infra](04-moe-training.md)（题 37～44，已完成）
 - [第 5 章：NCCL、网络与拓扑](05-nccl-network.md)（题 45～56，已完成）
-- 第 6 章：CUDA、算子与性能分析（题 57～66，待补充）
+- [第 6 章：CUDA、算子与性能分析](06-cuda-performance.md)（题 57～66，已完成）
 - 第 7 章：数据 Pipeline 与 Checkpoint（题 67～76，待补充）
 - 第 8 章：调度、容错与可观测性（题 77～86，待补充）
 - 第 9 章：RL Training Infra（题 87～123，待补充）
