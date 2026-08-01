@@ -3,7 +3,7 @@
 答案按主题拆分，题号与根目录 [README](../README.md) 保持一致。
 
 - [第 1 章：训练显存与计算量](01-memory-and-compute.md)（题 1～12，已完成）
-- 第 2 章：数据并行、ZeRO 与 FSDP（题 13～24，待补充）
+- [第 2 章：数据并行、ZeRO 与 FSDP](02-ddp-zero-fsdp.md)（题 13～24，已完成）
 - 第 3 章：Tensor / Pipeline / Context Parallel（题 25～36，待补充）
 - 第 4 章：MoE 训练 Infra（题 37～44，待补充）
 - 第 5 章：NCCL、网络与拓扑（题 45～56，待补充）
