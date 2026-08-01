@@ -2,7 +2,7 @@
 
 专注 **大模型训练基础设施**：分布式并行、训练框架、GPU/CUDA、集合通信、显存优化、集群调度、容错与性能工程。
 
-不覆盖模型算法、Prompt/RAG、PPO/GRPO/DPO 推导，也不覆盖在线推理服务。后训练仅讨论训练系统层面的多模型编排、权重同步和资源调度。
+不覆盖模型算法、Prompt/RAG、PPO/GRPO/DPO 数学推导，也不覆盖普通在线推理服务。**RL Training Infra 是核心范围之一**：重点讨论 rollout、训练、reward/verifier、权重同步、异构并行、调度和容错。
 
 ## 标签说明
 
@@ -124,25 +124,74 @@
 85. **[岗位强相关]** 如何记录 experiment lineage，使代码、镜像、配置、数据、checkpoint 和指标完全可追溯？
 86. **[系统设计]** 多租户训练平台如何做 quota、公平调度、优先级、成本核算和隔离？
 
-## 9. 后训练系统 Infra（不考算法推导）
+## 9. RL Training Infra（不考算法推导）
 
-87. **[岗位强相关]** Actor、Reference、Reward、Critic/Verifier 各需要多少副本和什么并行策略？
-88. **[系统设计]** 训练与 rollout 共置和分离部署如何取舍？重点讨论 GPU 利用率、权重同步和故障域。
-89. **[岗位强相关]** 训练引擎与 rollout 引擎之间如何同步分片权重，避免 rank 0 聚合？
-90. **[故障诊断]** rollout 长度分布造成 straggler 时，如何做动态 batching、负载均衡和 backpressure？
-91. **[系统设计]** 如何流水化 generation、reward/verifier 和 training，同时限制 policy staleness？
-92. **[岗位强相关]** 超长 response 对 activation、KV cache、通信和 checkpoint 有何系统影响？
+### 9.1 角色、数据流与资源映射
+
+87. **[面经高频]** 画出 prompt → rollout → reward/verifier → log-prob → advantage → train 的端到端数据流；哪些边传小对象，哪些边传大 tensor？
+88. **[岗位强相关]** Actor、Reference、Reward、Critic/Verifier 分别执行 generate、forward 还是 backward？各自适合什么并行策略？
+89. **[系统设计]** 如何为不同角色分配 GPU？静态配比、动态伸缩与自动 device mapping 各自的优缺点是什么？
+90. **[岗位强相关]** 为什么 RL 训练不是普通的多模型训练？多对多数据重分布和角色间依赖带来了哪些额外复杂度？
+91. **[源码深挖]** veRL/HybridFlow 的 single-controller 与 worker group 抽象解决了什么问题？Ray 适合走控制面还是数据面？
+92. **[系统设计]** FSDP/Megatron trainer 与 vLLM/SGLang rollout 如何组合，同时避免框架各自初始化 NCCL group 时冲突？
+
+### 9.2 Colocate、Disaggregate 与混合引擎
+
+93. **[面经高频]** rollout 与 training 共置（colocate）和分离（disaggregate）如何取舍？从显存、利用率、网络和 on-policy 语义分析。
+94. **[岗位强相关]** hybrid engine 如何在同一批 GPU 上做 role switching？训练权重、optimizer state 与 KV cache 如何 pause/offload/resume？
+95. **[故障诊断]** colocate 模式在长 response 下频繁 OOM，如何定位是 KV cache、训练 activation、碎片还是权重冗余？
+96. **[系统设计]** disaggregate 模式下 rollout 和 trainer GPU 比例如何根据 generation time、train time 与队列积压动态调整？
+97. **[源码深挖]** 从训练并行布局切换到推理 TP 布局时，参数如何 reshard？all-gather、all-to-all 与点对点传输如何选择？
+98. **[岗位强相关]** 什么时候适合把 Reference/Reward 与 Actor 共置？什么时候必须独立资源池？
+
+### 9.3 权重同步与一致性
+
+99. **[面经高频]** 训练引擎与 rollout 引擎之间如何同步分片权重，避免 rank 0 聚合和 CPU bounce？
+100. **[岗位强相关]** 权重同步走 Ray object store、CPU shared memory、NCCL broadcast 还是 RDMA？控制面与 tensor 数据面如何分离？
+101. **[源码深挖]** trainer 使用 ZeRO-3/FSDP、rollout 使用 TP 时，建立 shard-to-shard 映射需要哪些元数据？
+102. **[系统设计]** 全量权重、增量权重、LoRA adapter 同步分别适合什么场景？如何校验 rollout 已加载完整版本？
+103. **[故障诊断]** 部分 rollout worker 使用旧权重或错位 shard，但作业没有崩溃，如何检测这种 silent inconsistency？
+104. **[岗位强相关]** 同步流水线如何 overlap 权重传输与 generation？pause/resume 或 partial rollout 有哪些一致性风险？
+105. **[系统设计]** 给每个 sample 记录 policy version 有什么作用？训练端允许多大的 bounded staleness？
+
+### 9.4 同步、异步与 Pipeline
+
+106. **[面经高频]** 同步 RL pipeline 为什么产生 rollout bubble 和 trainer bubble？画时间线并量化利用率。
+107. **[岗位强相关]** 异步 rollout-training 如何用 bounded queue 做 backpressure？队列过大为什么可能影响收敛与内存？
+108. **[系统设计]** 如何在保持 on-policy 的前提下，让完整 group 一生成完就进入训练，而不等待整个 rollout batch？
+109. **[源码深挖]** partial rollout 如何处理中途切换权重、未完成序列、随机数状态与 KV cache？
+110. **[故障诊断]** rollout 速度大幅波动导致 trainer 饥饿，如何判断瓶颈在 sampling、reward、环境还是调度？
+111. **[系统设计]** generation、reward/verifier、reference log-prob 和 actor training 如何做多级流水与容量规划？
+
+### 9.5 Rollout、Reward 与 Agent 环境
+
+112. **[面经高频]** response 长度长尾如何造成 straggler？dynamic batching、sequence packing、work stealing 与 request migration 如何取舍？
+113. **[岗位强相关]** 一条 prompt 需要生成多条 response 时，group locality 和跨 worker regroup 如何影响通信与等待？
+114. **[系统设计]** reward/verifier 是本地函数、GPU 模型还是远程服务时，分别如何做 batching、超时、重试与幂等？
+115. **[故障诊断]** reward 服务变慢但 rollout GPU 正常，如何设计 trace 将延迟归因到具体 sample 和服务阶段？
+116. **[岗位强相关]** 多轮 Agent rollout 中，tool call、环境状态、sandbox、timeout 与不可重放副作用如何管理？
+117. **[系统设计]** 一个 trajectory 中部分环境 step 失败，应该丢弃、重试还是截断？基础设施如何保存可审计状态？
+118. **[岗位强相关]** 超长 response 对 KV cache、rollout 调度、训练 activation、通信和 checkpoint 有何联动影响？
+
+### 9.6 容错、可观测性与端到端优化
+
+119. **[系统设计]** rollout worker、reward worker、trainer rank 分别失败时，恢复边界应该是 request、group、batch 还是 step？
+120. **[故障诊断]** RL 作业吞吐下降时，如何把端到端 step time 分解为 generation、reward、reshard、sync 和 train？
+121. **[岗位强相关]** RL 训练需要额外监控哪些指标：response 长度分布、queue depth、policy lag、invalid sample、reward latency 还缺什么？
+122. **[系统设计]** 如何做 sample lineage，使 prompt、response、reward、policy version、训练 step 和 checkpoint 可追溯？
+123. **[系统设计]** 设计一个支持 70B、长链推理、多 verifier、千卡规模的 RL Training 平台，并给出资源模型和瓶颈预算。
 
 ## 10. Coding 与现场调试
 
-93. **[面经高频]** 用 C++/Python 实现一个线程安全的 bounded blocking queue，支持 backpressure 和关闭。
-94. **[训练 Infra 高频]** 实现 ring all-reduce 的模拟器，验证不同 rank 的 chunk 流转与最终结果。
-95. **[训练 Infra 高频]** 给定参数列表和 bucket 上限，实现 DDP gradient bucketing。
-96. **[训练 Infra 高频]** 给定 layer FLOPs 和显存，完成 pipeline stage 的负载均衡切分。
-97. **[训练 Infra 高频]** 给定多 rank 日志，找出第一个 collective 序号或 tensor shape 不一致的位置。
-98. **[训练 Infra 高频]** 实现一个 topology-aware GPU allocator，优先分配同节点/同 NVSwitch 域设备。
-99. **[训练 Infra 高频]** 写一个简化训练循环，正确处理 gradient accumulation、AMP、clip、DDP `no_sync` 和 checkpoint。
-100. **[现场调试]** 给一段会 hang/OOM/产生 NaN 的 PyTorch distributed 代码，现场定位并修复。
+124. **[面经高频]** 用 C++/Python 实现一个线程安全的 bounded blocking queue，支持 backpressure 和关闭。
+125. **[训练 Infra 高频]** 实现 ring all-reduce 的模拟器，验证不同 rank 的 chunk 流转与最终结果。
+126. **[训练 Infra 高频]** 给定参数列表和 bucket 上限，实现 DDP gradient bucketing。
+127. **[训练 Infra 高频]** 给定 layer FLOPs 和显存，完成 pipeline stage 的负载均衡切分。
+128. **[训练 Infra 高频]** 给定多 rank 日志，找出第一个 collective 序号或 tensor shape 不一致的位置。
+129. **[训练 Infra 高频]** 实现一个 topology-aware GPU allocator，优先分配同节点/同 NVSwitch 域设备。
+130. **[训练 Infra 高频]** 写一个简化训练循环，正确处理 gradient accumulation、AMP、clip、DDP `no_sync` 和 checkpoint。
+131. **[RL Train Infra 高频]** 实现一个按 policy version 分桶的 bounded experience queue，支持过期淘汰和 backpressure。
+132. **[现场调试]** 给一段会 hang/OOM/产生 NaN 的 PyTorch distributed 代码，现场定位并修复。
 
 ## 11. 高频系统设计题
 
@@ -204,6 +253,11 @@
 - [Efficient Large-Scale Language Model Training with Megatron-LM](https://arxiv.org/abs/2104.04473)
 - [DeepSpeed + Megatron 530B Training](https://arxiv.org/abs/2201.11990)
 - [MegaScale: Scaling LLM Training to More Than 10,000 GPUs](https://arxiv.org/abs/2402.15627)
+- [HybridFlow / veRL: A Flexible and Efficient RLHF Framework](https://arxiv.org/abs/2409.19256)
+- [veRL 官方仓库](https://github.com/verl-project/verl)
+- [OpenRLHF 文档](https://openrlhf.readthedocs.io/en/latest/)
+- [OpenRLHF Performance Tuning](https://openrlhf.readthedocs.io/en/latest/performance.html)
+- [PyTorch TorchRL：Weight Synchronization](https://pytorch.org/rl/stable/reference/collectors_weightsync.html)
 - [NVIDIA Megatron FSDP 文档](https://docs.nvidia.com/nemo/megatron-bridge/0.4.1/training/megatron-fsdp.html)
 - [PyTorch Distributed Overview](https://pytorch.org/tutorials/beginner/dist_overview.html)
 - [NCCL User Guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/)
