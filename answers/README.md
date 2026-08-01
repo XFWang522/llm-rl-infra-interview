@@ -14,4 +14,4 @@
   - [架构与资源编排](09a-rl-architecture.md)（题 87～98，已完成）
   - [权重同步与异步 Pipeline](09b-rl-sync-pipeline.md)（题 99～111，已完成）
   - [Rollout、Agent 环境、容错与优化](09c-rl-rollout-reliability.md)（题 112～123，已完成）
-- 第 10 章：Coding 与现场调试（题 124～132，待补充）
+- [第 10 章：Coding 与现场调试](10-coding-debugging.md)（题 124～132，已完成）
