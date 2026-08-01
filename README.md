@@ -14,6 +14,8 @@
 
 > 推荐回答结构：先给结论和公式，再画数据流/通信图，最后讲瓶颈、指标、故障案例与取舍。
 
+答案正在逐题补充，进度见 [answers/README.md](answers/README.md)。
+
 ## 1. 训练显存与计算量
 
 1. **[面经高频]** 训练一个参数量为 `P` 的 Transformer，参数、梯度、Adam states 分别占多少显存？混合精度下是否保留 FP32 master weights？
