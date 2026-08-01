@@ -10,7 +10,7 @@
 - [第 6 章：CUDA、算子与性能分析](06-cuda-performance.md)（题 57～66，已完成）
 - [第 7 章：数据 Pipeline 与 Checkpoint](07-data-checkpoint.md)（题 67～76，已完成）
 - [第 8 章：调度、容错与可观测性](08-scheduling-reliability.md)（题 77～86，已完成）
-- 第 9 章：RL Training Infra（进行中）
+- 第 9 章：RL Training Infra（题 87～123，已完成）
   - [架构与资源编排](09a-rl-architecture.md)（题 87～98，已完成）
   - [权重同步与异步 Pipeline](09b-rl-sync-pipeline.md)（题 99～111，已完成）
   - [Rollout、Agent 环境、容错与优化](09c-rl-rollout-reliability.md)（题 112～123，已完成）

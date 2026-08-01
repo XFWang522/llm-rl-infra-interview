@@ -14,7 +14,7 @@
 
 > 推荐回答结构：先给结论和公式，再画数据流/通信图，最后讲瓶颈、指标、故障案例与取舍。
 
-答案正在逐题补充，进度见 [answers/README.md](answers/README.md)。
+132 道题的答案已全部完成，见 [answers/README.md](answers/README.md)。
 
 ## 1. 训练显存与计算量
 
