@@ -27,6 +27,8 @@ Backward 的梯度通常按 forward 参数使用顺序的反向产生。如果 b
 - 不同 dtype 不会放在同一 bucket；
 - `gradient_as_bucket_view` 可让 `param.grad` 直接成为 bucket view，减少一次梯度拷贝，但限制某些原地操作。
 
+还要区分 DDP 版本与配置：`init_sync=True` 会在构造期校验 shape 并同步参数/buffer；`broadcast_buffers` 是 forward 期 buffer 同步，不是参数同步。注册后不得随意增删参数或改变各 rank 参数顺序，否则 reducer hook 与 collective 序列可能失配。
+
 ## 15. `find_unused_parameters` 为何有开销？static graph 优化什么？
 
 启用 `find_unused_parameters=True` 时，DDP 每轮从 forward 输出遍历 autograd graph，提前找出不会收到梯度的参数，并将其标记 ready，防止 reducer 永久等待。这带来额外图遍历与同步逻辑。
@@ -104,9 +106,9 @@ Transformer 常以一层或若干层为 unit，并让 tied embedding、共享参
 
 - **Full shard**：参数、梯度、optimizer state 全部分片；最省 model-state 显存，但 forward/backward 都可能需要参数 all-gather。
 - **Shard-grad-op**：梯度和 optimizer state 分片，forward 后保留完整参数直到 backward；通信更少、显存更多，接近 ZeRO-2 的取舍。
-- **Hybrid sharding**：节点内组成 shard group，节点间复制这些 shard group；把频繁 all-gather/reduce-scatter 限制在 NVLink 域，同时跨节点对副本做较低频规约。
+- **Hybrid sharding**：节点内组成 shard group，节点间复制这些 shard group；参数 all-gather/reduce-scatter 主要限制在节点内高速域，跨节点 replica group 仍需要同步梯度。优势是减少昂贵跨节点分片通信的数据量/参与方式，**不应表述成同步频率天然降低**。
 
-Hybrid 适合节点内快、节点间慢的层次化网络。代价是跨节点复制 model states，显存收益小于全局 full shard，还需正确构造二维 process group。选择依据是单卡显存约束、节点内外带宽比、模型大小和 DP 副本需求。
+Hybrid 适合节点内快、节点间慢的层次化网络。以 PyTorch `HYBRID_SHARD` 为例，节点内执行 `FULL_SHARD`，节点间复制参数；跨节点梯度同步通常可与节点内 reduce-scatter 组合/分层执行。代价是跨节点复制 model states，显存收益小于全局 full shard，还需正确构造 shard/replica 二维 process groups。选择依据是单卡显存约束、节点内外带宽比、模型大小和 DP 副本需求。
 
 ## 22. ZeRO-3/FSDP 何时不值得？
 
@@ -145,3 +147,9 @@ Hybrid 适合节点内快、节点间慢的层次化网络。代价是跨节点�
 候选空间包括 sharding strategy、wrap 边界、prefetch、reshard-after-forward、limit-all-gathers、mixed precision、activation checkpoint 和 hybrid group。
 
 推荐过程可先用解析模型排除放不下的配置，再对少量候选做短 profile。目标函数不能只有 tokens/s，还应约束峰值显存、step time 方差、checkpoint 成本和故障恢复能力。输出应包含配置、预测瓶颈、置信度和回退方案；框架/驱动版本变化后需重新校准。
+
+## 审校依据
+
+- [PyTorch FSDP ShardingStrategy](https://docs.pytorch.org/docs/stable/fsdp.html)：`FULL_SHARD`、`SHARD_GRAD_OP`、`HYBRID_SHARD` 的参数生命周期与通信语义。
+- [PyTorch FSDP2 communication grouping](https://docs.pytorch.org/docs/main/distributed.fsdp.fully_shard.html)：group 粒度、all-gather/reduce-scatter 和 overlap 边界。
+- [PyTorch DistributedDataParallel](https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html)：输入不由 DDP 自动切分、初始化同步、bucket/static-graph 配置语义。

@@ -2,6 +2,18 @@
 
 答案按主题拆分，题号与根目录 [README](../README.md) 保持一致。
 
+## 回答标准
+
+答案按资深 Infra 面试的五层结构审校：
+
+1. **语义/不变量**：先说明系统必须保证什么，而不是先报框架名。
+2. **数据与通信路径**：明确 tensor ownership、layout、collective/RPC 和同步点。
+3. **资源与关键路径**：给出显存、通信量、复杂度或 service-rate 模型。
+4. **故障与观测**：说明失败边界、幂等/恢复，以及用什么指标证明判断。
+5. **取舍与适用条件**：区分理论可行、框架支持和生产值得，避免绝对化结论。
+
+文档刻意不提供脱离版本的“唯一最佳参数”。FSDP、Megatron、NCCL、veRL/OpenRLHF 等实现细节会演进，涉及具体 API/能力矩阵的答案附有一手资料链接，并应以目标版本实测为准。
+
 - [第 1 章：训练显存与计算量](01-memory-and-compute.md)（题 1～12，已完成）
 - [第 2 章：数据并行、ZeRO 与 FSDP](02-ddp-zero-fsdp.md)（题 13～24，已完成）
 - [第 3 章：Tensor / Pipeline / Context Parallel](03-model-parallel.md)（题 25～36，已完成）

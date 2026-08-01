@@ -63,6 +63,8 @@ CP 将长序列 token 分到多个 rank，每个 rank 持有本地 Q/K/V。为�
 
 每 rank 的 KV/activation 显存约降为 `1/CP`，但引入 `CP-1` 轮通信。应把 KV 传输与 attention kernel overlap，并正确应用 causal mask。CP 解决长上下文 activation，和按 hidden/head 切分的 TP 是不同维度。
 
+因 causal attention 不同 sequence block 的有效计算量不同，简单连续切分会造成 CP ranks 负载不均；常见 zig-zag/对称块映射把序列前后片段配对。Backward 还需传递/累加对应 KV gradients。GQA/MQA 虽减少 KV 大小，但不消除全上下文依赖；通信协议与 head layout 必须联合设计。
+
 ## 34. Ulysses 与 ring-based CP 如何取舍？
 
 Ulysses 通过 all-to-all 在 sequence-sharded 与 head-sharded layout 间转换，使每 rank 拿到完整序列的一部分 heads，然后本地算 attention。它通信轮数少，但并行度受 attention head 数约束，all-to-all 对网络和不均匀消息敏感。
@@ -79,6 +81,8 @@ Ring 方案不要求一次全局转置，适合更大 CP size 和超长序列，
 
 数据 sampler 只跨 DP 区分样本；TP/CP ranks 处理同一样本的不同 tensor shard；PP ranks 处理不同层。若引入 EP，dense DP 与 expert DP 的定义可能改变，不能简单再乘一个维度。
 
+CP 只切 activation、不切权重，因此 CP ranks 上存在权重副本；这些副本的 weight gradients 也必须规约。Megatron 常把 CP ranks 纳入相应 data-parallel gradient-reduction domain。只写 `DP×TP×PP×CP` 的乘积不足以定义正确通信，还必须明确每类参数使用哪个 gradient group。
+
 ## 36. 70B、128×8 H100 如何设计并行方案？
 
 总 GPU 为 1024。一个合理起点例如 `TP=8, PP=8, CP=2, DP=8`，乘积为 1024：TP 完全位于单个 8-GPU NVSwitch 节点；PP 跨节点传 activation；CP 用于长上下文；DP 承担梯度/optimizer 分片。
@@ -92,3 +96,9 @@ Ring 方案不要求一次全局转置，适合更大 CP size 和超长序列，
 5. 用短跑测峰值显存、MFU、暴露通信和 stage imbalance，再搜索邻近配置。
 
 若上下文较短可令 CP=1、增加 DP；若网络跨节点较弱可提高 PP、避免跨节点 TP。答案必须带上序列长度、micro-batch、网络拓扑等假设。
+
+## 审校依据
+
+- [Megatron Core Parallelism Strategies](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/parallelism-guide.html)
+- [Megatron Context Parallelism](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/context_parallel.html)：CP 切分全部 sequence activation，而 SP 只覆盖部分逐 token activation。
+- [Megatron parallel state](https://docs.nvidia.com/megatron-core/developer-guide/latest/apidocs/core/core.parallel_state.html)：CP 权重复制及 weight-gradient reduction group。

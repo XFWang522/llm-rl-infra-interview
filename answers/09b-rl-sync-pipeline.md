@@ -93,6 +93,8 @@ Partial rollout 暂停未完成序列，将 token history、sampling RNG/counter
 
 哪种可接受取决于算法。基础设施不能隐式混用，必须把 version boundary 编入 trajectory，并保证随机状态可审计。
 
+具体框架语义需要单独核对。例如 OpenRLHF 的 async/partial-rollout 模式通过 vLLM pause/resume 让 generation 与 weight broadcast overlap，官方明确将其定位为“以一定 on-policy 程度换吞吐”的模式，而不是严格 on-policy 的透明优化。因此上线前必须先以同步模式建立收敛基线，再验证 version lag、ratio/KL 分布和最终能力。
+
 ## 110. Trainer 饥饿如何判断瓶颈？
 
 构建每 sample 的分布式 trace：queue/admission、prefill、decode、tool/environment、reward、group-complete、transfer、trainer dequeue。看 critical-path 分位数而非平均值。
@@ -111,3 +113,9 @@ Partial rollout 暂停未完成序列，将 token history、sampling RNG/counter
 Buffer 放在可解耦边界，保存最小必要 tensor；group-level 依赖处不能任意拆分。权重更新形成反馈 barrier，需要定义版本窗口和 drain 策略。瓶颈变化时优先动态 batch/调度，再调整资源池。
 
 最终用 end-to-end goodput、GPU-hours/accepted sample、policy lag、discard rate 和收敛曲线评估，而不是把每阶段 GPU 利用率都优化到 100%。
+
+## 审校依据
+
+- [OpenRLHF Async Training & Partial Rollout](https://openrlhf.readthedocs.io/en/latest/async_training.html)
+- [OpenRLHF Performance Tuning](https://openrlhf.readthedocs.io/en/latest/performance.html)
+- [HybridFlow / veRL](https://arxiv.org/abs/2409.19256)

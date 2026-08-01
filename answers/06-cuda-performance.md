@@ -38,6 +38,8 @@ Tile 太大增加复用但消耗 registers/shared memory、降低并发；太小
 
 FlashAttention 分块读取 Q/K/V，在 SRAM 内算局部 score。对每个 query row 维护历史最大值 `m`、归一化和 `l`、未归一化输出 `o`；新 block 到来时用新的最大值重新缩放旧累积量，再合并当前 block，因此结果与全量 stable softmax 等价。
 
+若旧状态为 `(m,l,o)`、新 block 最大值为 `m_b`，则 `m'=max(m,m_b)`，旧累积按 `exp(m-m')` 缩放，新 block 按 `exp(m_b-m')` 缩放后合并；这是数值稳定与可分块的关键不变量。Backward 通常保存少量 row statistics 并重算局部 scores，而不是保存完整 attention matrix。
+
 它避免把完整 attention matrix 写入 HBM，把 attention 中间存储降为近似线性，并通过 tiling 提高 IO efficiency。计算 FLOPs 仍为平方；causal mask、dropout、GQA 和 backward 需要专门 kernel 处理。
 
 ## 62. 常见 Fusion 省了什么？

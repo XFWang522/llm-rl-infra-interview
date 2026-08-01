@@ -50,14 +50,26 @@ Checkpoint 记录 logical global tensor 的 shape、dtype、轴语义，以及�
 
 PP 变化还需 layer-name 到 stage 的重新映射；TP 变化涉及行/列切分；optimizer state 必须与参数使用同一 logical mapping。不能依赖旧 rank 编号或文件名。转换要处理 padding、tied weights、MoE experts 和版本迁移，并做全局 checksum/小模型等价测试。
 
+“支持 reshard”是 checkpoint schema 的能力，不是分布式保存天然具备。PyTorch DCP 通过 canonical FQN、global metadata 与 load planner 计算目标 `local_chunks` 所需 reads；Megatron Core 也要求应用提供 `sharded_state_dict`。Optimizer state 尤其复杂：参数 ID 必须映射回 canonical parameter identity。
+
+具体格式存在能力/性能取舍。例如 Megatron Core 的某些 optimizer checkpoint 提供更快但不能任意改变 model parallelism 的 `dp_reshardable` 路径，以及更慢、转换能力更强的 `fully_reshardable` 路径。生产系统应在 manifest 中声明 schema/version/reshard capability，load 前 fail-fast，不能到恢复现场才试错。
+
 ## 75. 异步 Checkpoint 如何保证一致？
 
 Optimizer-step 边界先冻结一个逻辑快照。可把 GPU shards 异步拷到预分配 pinned CPU buffer，训练继续使用下一版本参数，后台线程/进程负责序列化和写盘。双缓冲避免覆盖尚未写完的数据。
 
 必须限制同时在途快照数和额外 host/GPU 内存；后台失败要上报，不能仍更新“latest”指针。发布前校验所有 rank 的 step/version 一致。若 CPU copy 本身阻塞关键 stream，应分块、限速或使用本地持久化层。
 
+异步并非零开销：GPU→CPU staging 仍可能形成短暂停顿，后台线程还可能受 GIL、CPU/IO 争用影响。更成熟实现使用 pinned/shared staging、non-blocking copy、独立进程以及 save-plan cache；必须测“前台停顿”和“随后若干 step 的背景干扰”两部分。
+
 ## 76. 千卡作业的分层 Checkpoint 设计
 
 本地 NVMe 带宽高，适合频繁临时 checkpoint 和节点内聚合，但节点故障会丢失；并行文件系统便于共享恢复但 metadata/带宽可能拥塞；对象存储耐久、弹性好但延迟高。
 
 常见设计：每 rank 分片写节点本地 → 每节点聚合/限流 → 后台上传对象存储 → 全局 manifest 原子提交。保留最近的快速本地副本和较稀疏的耐久副本。checkpoint interval 根据故障率、写入成本和重算损失选择，并定期执行真实恢复演练，而不只验证文件存在。
+
+## 审校依据
+
+- [PyTorch Distributed Checkpoint](https://docs.pytorch.org/docs/main/distributed.checkpoint.html)：多 rank 保存、in-place load、canonical FQN 与 load-time reshard。
+- [Megatron Core Distributed Checkpointing](https://docs.nvidia.com/megatron-core/developer-guide/0.16.0/api-guide/core/dist_checkpointing.html)：跨并行配置加载及 optimizer 格式能力差异。
+- [PyTorch asynchronous checkpointing](https://pytorch.org/blog/6x-faster-async-checkpointing/)：独立进程、plan caching 与大规模后台写入成本。

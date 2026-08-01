@@ -79,3 +79,5 @@ Experience 的状态机至少包含 created、rolled-out、rewarded、queued、c
 可靠性：trainer step checkpoint，request/group 级幂等恢复，坏节点隔离；sample lineage 与 policy checksum 防 silent mismatch。容量预算必须列出 trainer states/activation、rollout weights/KV、sync staging、网络峰值以及 `R/S/T` critical path。
 
 验收不是“能跑”：要求 loss/logit 对齐、故障注入、扩展效率、accepted tokens/s、policy lag、恢复时间和 GPU goodput SLO，并为 colocate/disaggregate、同步/异步提供可回退配置。
+
+P7 级设计还应给出数字化示例：由 70B 参数 layout 推导 trainer/rollout 单副本卡数与同步字节量；用实测 response-token 分布估算 KV 容量和 group P99；以 `R/S/T` 时间决定资源比例；用 job MTBF、checkpoint cost 和 sample discard cost 估算故障预算。没有这些量化输入，架构图无法证明可行。

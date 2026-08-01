@@ -47,6 +47,8 @@ TP 分片单个矩阵，EP 分布不同 experts。对 dense 层通常使用 TP�
 
 若一个 expert 太大放不进单卡，仍需 expert tensor parallel；这会让 token all-to-all 后再进入 TP group，通信更复杂。常见约束是令高频 EP all-to-all 尽量在高速域，或采用 hierarchical dispatch。
 
+在 Megatron Core 的常见配置中，组合 TP 与 EP 时需要启用 Sequence Parallel，以避免 TP 区域中原本复制的 sequence activation 与 expert dispatch layout 产生不受支持/低效的组合。回答时要区分“数学上可组合”与“具体框架支持矩阵”。
+
 MoE 层与 dense 层不必共享同一布局，但布局切换需要 tensor reshard，可能吞掉收益。设计时应计算每层参数显存、激活 token 数、TP collective 与 EP all-to-all 的暴露时间。
 
 ## 42. DeepEP / Fused All-to-All 优化什么？
@@ -76,3 +78,7 @@ MoE 层与 dense 层不必共享同一布局，但布局切换需要 tensor resh
 可先把 EP group 放入 NVSwitch 或同 rail 域，再用加权 bin packing 分配 experts；高负载 expert 分散到不同 rank/节点，强共现 expert 避免集中。若支持复制热门 expert，router 还需选择副本并保证梯度同步。
 
 动态迁移不能只看瞬时热度：迁移参数本身昂贵，会改变 optimizer/checkpoint shard。应使用滑动窗口、滞回阈值和安全切换点，并保留静态布局回退。
+
+## 审校依据
+
+- [Megatron Core Parallelism Strategies](https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/parallelism-guide.html)：EP、expert tensor parallel、TP+EP 时的 SP 要求。

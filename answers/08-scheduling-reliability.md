@@ -20,11 +20,15 @@ TP/EP/CP 等高频通信组应放高速域，副本/DP 可跨故障域。bin pac
 
 经典近似中，checkpoint 成本为 `C`、平均故障间隔为 `MTBF`，最优间隔量级约 `sqrt(2×C×MTBF)`，更精确模型会加入恢复时间和 checkpoint 自身故障概率。抢占率、上传拥塞和增量 checkpoint 会改变参数。平台应以有效训练时间而非 GPU allocation time 衡量收益。
 
+这里必须使用**整个作业**的有效 MTBF，而非单节点 MTBF；近似独立故障下，节点数增加会显著缩短 job MTBF。Young/Daly 公式只是稳态起点，生产策略还要加入计划抢占 hazard、checkpoint 完成时间分布、恢复/重新排队时间和本地/远端副本失效相关性。最终以长期 goodput 仿真或历史 trace 校准。
+
 ## 80. 弹性扩缩容如何保持语义？
 
 在 optimizer-step 边界暂停，保存 global state，重建 process groups 并 reshard model/optimizer。DP size 变化时若 micro-batch 与 accumulation 不调，global batch 会变化；应保持目标 tokens/update，并决定是否按规则调整学习率。
 
 Sampler 根据 consumed global samples/tokens 重新映射，避免重读或跳过。TP/PP 变化还需 checkpoint layout conversion。频繁弹性会付出 group initialization、reshard、cache warmup 和编译成本，因此应有最小驻留时间和收益阈值。
+
+同步 SGD/Adam 的成员变更不能在任意 collective 中间发生：应使用 generation/epoch 编号让旧 process group fencing，防止迟到 rank 写入新一代状态。扩容成功的提交点至少要求新 group、参数/optimizer shards、sampler cursor 三者属于同一 generation；失败则整体回滚旧 generation。
 
 ## 81. 如何降低千卡作业的故障损失？
 
